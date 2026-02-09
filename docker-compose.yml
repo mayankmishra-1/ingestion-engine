@@ -1,6 +1,19 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:15
+    container_name: ingestion-engine-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fleet_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d  # <-- Mount SQL folder
+    restart: always
+
   redis:
     image: redis:7-alpine
     container_name: ingestion-engine-redis
@@ -8,6 +21,22 @@ services:
       - '6379:6379'
     restart: always
     command: redis-server --appendonly yes
+
+  app:
+    build: .
+    container_name: ingestion-engine-app
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/fleet_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - '3000:3000'
+
+
+
 
 
 
@@ -17,30 +46,10 @@ services:
 # version: '3.8'
 
 # services:
-#   db:
-#     image: postgres:15
+#   redis:
+#     image: redis:7-alpine
+#     container_name: ingestion-engine-redis
+#     ports:
+#       - '6379:6379'
 #     restart: always
-#     environment:
-#       POSTGRES_USER: fleet_user
-#       POSTGRES_PASSWORD: fleet_pass
-#       POSTGRES_DB: fleet_db
-#     ports:
-#       - "5432:5432"
-#     volumes:
-#       - pgdata:/var/lib/postgresql/data
-
-#   app:
-#     build: .
-#     command: npm run start:dev
-#     volumes:
-#       - .:/usr/src/app
-#       - /usr/src/app/node_modules
-#     ports:
-#       - "3000:3000"
-#     depends_on:
-#       - db
-#     environment:
-#       DATABASE_URL: postgres://fleet_user:fleet_pass@db:5432/fleet_db
-
-# volumes:
-#   pgdata:
+#     command: redis-server --appendonly yes
