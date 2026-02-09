@@ -1,98 +1,310 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# High-Scale Energy Ingestion Engine
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A **NestJS-based analytics and ingestion engine** for energy data from vehicles and meters, designed for **high-volume data ingestion**, **fast analytical queries**, and **efficient caching**.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+This project demonstrates **Redis caching**, **PostgreSQL partitioning**, **hot/cold tables**, and **basic validations**, optimized for real-time and historical analytics.
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## **Table of Contents**
 
-## Project setup
+1. [Features](#features)
+2. [Architecture & Design](#architecture--design)
+3. [Database Design](#database-design)
+4. [Caching Layer](#caching-layer)
+5. [Validations](#validations)
+6. [Docker Setup](#docker-setup)
+7. [Running Locally](#running-locally)
+8. [Running via Docker](#running-via-docker)
+9. [Optimizations & Notes](#optimizations--notes)
 
-```bash
-$ npm install
+---
+
+## **Features**
+
+* **REST API** for ingestion and analytics:
+
+  * `/api/v1/meter` – Insert meter readings
+  * `/api/v1/vehicle` – Insert vehicle readings
+  * `/api/v1/analytics/performance/:vehicleId` – Get analytics for a vehicle (24h window)
+
+* **Redis caching** for fast analytics queries
+
+* **Partitioned PostgreSQL tables** for hot (recent) and cold (historical) data
+
+* **Basic parameter validation** to avoid invalid API inputs
+
+* **Dockerized environment** with Postgres, Redis, and NestJS app
+
+---
+
+## **Architecture & Design**
+
+```
+            ┌───────────────┐
+            │   NestJS App  │
+            └───────┬───────┘
+                    │
+         ┌──────────┴──────────┐
+         │  Redis Cache Layer   │
+         └──────────┬──────────┘
+                    │
+         ┌──────────┴──────────┐
+         │ PostgreSQL Database │
+         │ - Hot & Cold Tables │
+         │ - Partitioned Data  │
+         └────────────────────┘
 ```
 
-## Compile and run the project
+**Design Goals:**
 
-```bash
-# development
-$ npm run start
+* Analytics queries **avoid full table scans** using:
 
-# watch mode
-$ npm run start:dev
+  * Partitioned tables for historical data (`vehicle_2026_02`, `vehicle_2026_03`, etc.)
+  * Indexes on frequently filtered columns (`vehicleId`, `timestamp`)
+* Real-time queries hit **hot tables** (`vehicle_live`, `meter_live`)
+* Redis caches frequently requested analytics results (**5-minute TTL**) to reduce DB load
 
-# production mode
-$ npm run start:prod
+---
+
+## **Database Design**
+
+**Hot Tables (Real-time ingestion):**
+
+* `vehicle_live` – Latest vehicle readings
+* `meter_live` – Latest meter readings
+
+**Cold Tables (Historical / Partitioned):**
+
+* `vehicle` – Partitioned by `timestamp`
+
+  * `vehicle_YYYY_MM`
+  * `vehicle_default`
+* `meter` – Partitioned by `timestamp`
+
+  * `meter_YYYY_MM`
+  * `meter_default`
+
+**Indexes:**
+
+```sql
+CREATE INDEX idx_vehicle_vehicleId_timestamp ON vehicle ("vehicleId", "timestamp");
+CREATE INDEX idx_meter_meterId_timestamp ON meter ("meterId", "timestamp");
 ```
 
-## Run tests
+**Partitioning ensures:**
 
-```bash
-# unit tests
-$ npm run test
+* Analytics queries only scan relevant monthly partitions
+* Avoids full table scan for historical data
 
-# e2e tests
-$ npm run test:e2e
+---
 
-# test coverage
-$ npm run test:cov
+## **Caching Layer**
+
+* **Redis** used for caching analytics queries
+* **Key format:** `analytics:performance:{vehicleId}`
+* **TTL:** 5 minutes (configurable)
+* **Benefits:**
+
+  * Avoid repeated aggregation on historical data
+  * Reduces DB query load
+  * Supports horizontal scaling
+
+**Example in service:**
+
+```ts
+const cached = await this.redis.get(cacheKey);
+if (cached) return JSON.parse(cached);
+
+const response = await this.computeAnalytics(vehicleId);
+await this.redis.set(cacheKey, JSON.stringify(response), 'EX', 300); // 5 min TTL
 ```
 
-## Deployment
+---
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## **Validations**
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+* Basic validation at **service layer**
+* Example: Ensure `vehicleId` is provided for analytics query
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```ts
+if (!vehicleId || vehicleId.trim() === '') {
+  throw new BadRequestException('vehicleId must be provided');
+}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+* Validations can be extended with **DTOs** for ingestion endpoints
+* Placing validation in **service** ensures consistency even if called from multiple controllers
 
-## Resources
+---
 
-Check out a few resources that may come in handy when working with NestJS:
+## **Docker Setup**
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+**Project structure for Docker:**
 
-## Support
+```
+project-root/
+├─ src/
+├─ db/
+│  └─ init/
+│     └─ init.sql
+├─ Dockerfile
+├─ docker-compose.yml
+├─ package.json
+├─ tsconfig.json
+└─ .env
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+**docker-compose.yml** includes:
 
-## Stay in touch
+* `postgres` – Preloaded with tables, partitions, and indexes
+* `redis` – Caching layer
+* `app` – NestJS application
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+---
 
-## License
+### **Dockerfile**
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```dockerfile
+FROM node:20-alpine
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+RUN npm install --frozen-lockfile
+
+COPY . .
+
+RUN npm run build
+
+EXPOSE 3000
+
+CMD ["node", "dist/main.js"]
+```
+
+---
+
+### **docker-compose.yml**
+
+```yaml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: ingestion-engine-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fleet_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: ingestion-engine-redis
+    ports:
+      - '6379:6379'
+    restart: always
+    command: redis-server --appendonly yes
+
+  app:
+    build: .
+    container_name: ingestion-engine-app
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/fleet_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - '3000:3000'
+```
+
+---
+
+## **Running Locally**
+
+1. Start Postgres and Redis manually or via Docker
+2. Update `.env`:
+
+```
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/fleet_db
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+```
+
+3. Run NestJS:
+
+```bash
+npm install
+npm run start:dev
+```
+
+---
+
+## **Running via Docker**
+
+1. Build and start all containers:
+
+```bash
+docker-compose up --build
+```
+
+2. Access APIs: `http://localhost:3000/api/v1/...`
+3. Check Redis cache:
+
+```bash
+docker exec -it ingestion-engine-redis redis-cli
+keys *
+```
+
+4. Check Postgres tables and partitions:
+
+```bash
+docker exec -it ingestion-engine-postgres psql -U postgres -d fleet_db
+\dt
+SELECT * FROM vehicle_2026_02 LIMIT 5;
+```
+
+---
+
+## **Optimizations & Notes**
+
+* **Redis caching:** Minimizes repeated aggregation queries
+* **Hot and Cold tables:**
+
+  * Hot tables: `vehicle_live`, `meter_live` – real-time writes & queries
+  * Cold tables: `vehicle`, `meter` with monthly partitions – analytics over historical data
+* **Partitioned tables:** Ensure analytical queries **do not scan entire historical data**
+* **Indexes on frequently filtered columns** (`vehicleId`, `meterId`, `timestamp`)
+* **Validation at service layer:** Ensures APIs do not receive invalid parameters
+
+**Query efficiency example:**
+
+```sql
+SELECT SUM("kwhDeliveredDc") FROM vehicle
+WHERE "vehicleId" = 'V123' AND "timestamp" >= '2026-02-01'
+```
+
+* Thanks to **partition pruning**, Postgres only scans partitions containing February 2026
+
+---
+
+## **Summary**
+
+This project demonstrates:
+
+* High-scale ingestion using **NestJS + Postgres + Redis**
+* Analytical queries optimized with **partitioning, indexes, and caching**
+* Separation of **hot (live) and cold (historical) tables**
+* Validations for API robustness
+* Full **Dockerized environment** for easy deployment
+
+You can **run everything locally** or **spin up with Docker** and your analytics queries are **fast, safe, and scalable**.
+
+---
