@@ -63,7 +63,28 @@ This project demonstrates **Redis caching**, **PostgreSQL partitioning**, **hot/
   * Partitioned tables for historical data (`vehicle_2026_02`, `vehicle_2026_03`, etc.)
   * Indexes on frequently filtered columns (`vehicleId`, `timestamp`)
 * Real-time queries hit **hot tables** (`vehicle_live`, `meter_live`)
-* Redis caches frequently requested analytics results (**5-minute TTL**) to reduce DB load
+* Redis caches frequently requested analytics results (**current ttl set to 1 second for testing**) to reduce DB load
+
+## Data Correlation and Aggregation
+
+- Vehicle and meter data are correlated via `vehicleId` and timestamps
+- Aggregations are done on the 24h window using indexed columns
+
+## Scalability
+
+- Handles 14.4M records/day (assuming 10 records/sec/vehicle × 16k vehicles)
+- Partition pruning + indexes + Redis cache prevent performance bottlenecks
+- Partitioning by month ensures queries touch only the current and relevant months
+- Hot/live tables allow real-time updates without affecting historical tables
+- Redis cache prevents repeated heavy aggregation
+- Each vehicle writes 1 record per 60s → 10,000 writes per minute.
+
+### PostgreSQL handles it efficiently because:
+
+- Writes are append-only (sequential).
+- Partitioning isolates queries/writes to relevant partitions.
+- Live tables reduce contention on historical tables.
+
 
 ---
 
@@ -103,22 +124,12 @@ CREATE INDEX idx_meter_meterId_timestamp ON meter ("meterId", "timestamp");
 
 * **Redis** used for caching analytics queries
 * **Key format:** `analytics:performance:{vehicleId}`
-* **TTL:** 5 minutes (configurable)
+* **TTL:** 1 second
 * **Benefits:**
 
   * Avoid repeated aggregation on historical data
   * Reduces DB query load
   * Supports horizontal scaling
-
-**Example in service:**
-
-```ts
-const cached = await this.redis.get(cacheKey);
-if (cached) return JSON.parse(cached);
-
-const response = await this.computeAnalytics(vehicleId);
-await this.redis.set(cacheKey, JSON.stringify(response), 'EX', 300); // 5 min TTL
-```
 
 ---
 
