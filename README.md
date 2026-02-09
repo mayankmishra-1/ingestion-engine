@@ -124,7 +124,7 @@ CREATE INDEX idx_meter_meterId_timestamp ON meter ("meterId", "timestamp");
 
 * **Redis** used for caching analytics queries
 * **Key format:** `analytics:performance:{vehicleId}`
-* **TTL:** 1 second
+* **TTL:** 1 second(kept for testing)
 * **Benefits:**
 
   * Avoid repeated aggregation on historical data
