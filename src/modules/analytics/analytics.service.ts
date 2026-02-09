@@ -1,23 +1,44 @@
-// src/modules/analytics/analytics.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
+import Redis from 'ioredis';
+
 import { Vehicle } from '../vehicle/entities/vehicle.entity';
 import { Meter } from '../meter/entities/meter.entity';
 
 @Injectable()
 export class AnalyticsService {
+  private redis: Redis;
+
   constructor(
     @InjectRepository(Vehicle)
-    private vehicleRepo: Repository<Vehicle>,
+    private readonly vehicleRepo: Repository<Vehicle>,
+
     @InjectRepository(Meter)
-    private meterRepo: Repository<Meter>,
-  ) {}
+    private readonly meterRepo: Repository<Meter>,
+
+    private readonly configService: ConfigService,
+  ) {
+    const host = this.configService.get<string>('REDIS_HOST', '127.0.0.1');
+    const port = this.configService.get<number>('REDIS_PORT', 6379);
+
+    this.redis = new Redis({ host, port });
+  }
 
   async getPerformance(vehicleId: string) {
+    const cacheKey = `analytics:performance:${vehicleId}`;
+
+    const cached = await this.redis.get(cacheKey);
+    if (cached) {
+      console.log('Cache HIT for key:', cacheKey, 'value:', JSON.parse(cached));
+      return JSON.parse(cached);
+    }
+
+    console.log('Cache MISS for key:', cacheKey, 'computing analytics...');
+
     const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    // Aggregate vehicle data in 24h window
     const vehicleAgg = await this.vehicleRepo
       .createQueryBuilder('v')
       .select('SUM(v.kwhDeliveredDc)', 'totalDc')
@@ -25,69 +46,31 @@ export class AnalyticsService {
       .where('v.vehicleId = :vehicleId AND v.timestamp >= :fromDate', { vehicleId, fromDate })
       .getRawOne();
 
-    // Aggregate meter data in 24h window
+       // 3️⃣ Check if vehicle exists at all
+    if (!vehicleAgg || vehicleAgg.totalDc === null) {
+      throw new NotFoundException(`Vehicle with ID "${vehicleId}" not found or has no data in the last 24 hours.`);
+    }
+
     const meterAgg = await this.meterRepo
       .createQueryBuilder('m')
       .select('SUM(m.kwhConsumedAc)', 'totalAc')
       .where('m.timestamp >= :fromDate', { fromDate })
       .getRawOne();
 
-    return {
+    const totalDc = parseFloat(vehicleAgg?.totalDc) || 0;
+    const totalAc = parseFloat(meterAgg?.totalAc) || 0;
+
+    const response = {
       vehicleId,
-      totalAc: parseFloat(meterAgg.totalAc) || 0,
-      totalDc: parseFloat(vehicleAgg.totalDc) || 0,
-      efficiency: vehicleAgg.totalDc && meterAgg.totalAc ? parseFloat(vehicleAgg.totalDc) / parseFloat(meterAgg.totalAc) : 0,
-      avgBatteryTemp: parseFloat(vehicleAgg.avgTemp) || 0,
+      totalAc,
+      totalDc,
+      efficiency: totalAc > 0 ? totalDc / totalAc : 0,
+      avgBatteryTemp: parseFloat(vehicleAgg?.avgTemp) || 0,
     };
+
+    await this.redis.set(cacheKey, JSON.stringify(response), 'EX', 1);
+    console.log('Cached analytics key:', cacheKey);
+
+    return response;
   }
 }
-
-
-
-
-
-
-
-// // src/modules/analytics/analytics.service.ts
-// import { Injectable } from '@nestjs/common';
-// import { Repository } from 'typeorm';
-// import { InjectRepository } from '@nestjs/typeorm';
-// import { Vehicle } from '../vehicle/entities/vehicle.entity';
-// import { Meter } from '../meter/entities/meter.entity';
-
-// @Injectable()
-// export class AnalyticsService {
-//   constructor(
-//     @InjectRepository(Vehicle)
-//     private vehicleRepo: Repository<Vehicle>,
-//     @InjectRepository(Meter)
-//     private meterRepo: Repository<Meter>,
-//   ) {}
-
-//   async getPerformance(vehicleId: string) {
-//     // 24-hour window
-//     const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-//     const vehicleData = await this.vehicleRepo
-//       .createQueryBuilder('v')
-//       .where('v.vehicleId = :vehicleId AND v.timestamp >= :fromDate', { vehicleId, fromDate })
-//       .getMany();
-
-//     const meterData = await this.meterRepo
-//       .createQueryBuilder('m')
-//       .where('m.timestamp >= :fromDate', { fromDate })
-//       .getMany();
-
-//     const totalDc = vehicleData.reduce((sum, v) => sum + v.kwhDeliveredDc, 0);
-//     const avgTemp = vehicleData.reduce((sum, v) => sum + v.batteryTemp, 0) / vehicleData.length || 0;
-//     const totalAc = meterData.reduce((sum, m) => sum + m.kwhConsumedAc, 0);
-
-//     return {
-//       vehicleId,
-//       totalAc,
-//       totalDc,
-//       efficiency: totalDc / totalAc,
-//       avgBatteryTemp: avgTemp,
-//     };
-//   }
-// }

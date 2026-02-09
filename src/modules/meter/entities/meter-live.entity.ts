@@ -1,4 +1,3 @@
-// src/modules/meter/entities/meter-live.entity.ts
 import { Entity, PrimaryColumn, Column, UpdateDateColumn } from 'typeorm';
 
 @Entity('meter_live')

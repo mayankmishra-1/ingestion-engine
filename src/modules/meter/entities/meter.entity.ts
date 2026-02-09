@@ -1,4 +1,3 @@
-// src/modules/meter/entities/meter.entity.ts
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
 
 @Entity()

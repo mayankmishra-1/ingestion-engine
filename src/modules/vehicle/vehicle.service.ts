@@ -1,7 +1,11 @@
-// src/modules/vehicle/vehicle.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+// import { Cache } from 'cache-manager';
+import type { Cache } from 'cache-manager';
+
+
 import { Vehicle } from './entities/vehicle.entity';
 import { VehicleLive } from './entities/vehicle-live.entity';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
@@ -10,40 +14,34 @@ import { CreateVehicleDto } from './dto/create-vehicle.dto';
 export class VehicleService {
   constructor(
     @InjectRepository(Vehicle)
-    private vehicleRepo: Repository<Vehicle>,
+    private readonly vehicleRepo: Repository<Vehicle>,
+
     @InjectRepository(VehicleLive)
-    private vehicleLiveRepo: Repository<VehicleLive>,
+    private readonly vehicleLiveRepo: Repository<VehicleLive>,
+
+    @Inject(CACHE_MANAGER)
+    private readonly cacheManager: Cache,
   ) {}
 
-  // Append-only history + live UPSERT
   async create(dto: CreateVehicleDto) {
     await this.vehicleRepo.save(dto);
-    return this.upsertLive(dto);
-  }
 
-  async upsertLive(dto: CreateVehicleDto) {
     await this.vehicleLiveRepo.save({
       vehicleId: dto.vehicleId,
       soc: dto.soc,
       kwhDeliveredDc: dto.kwhDeliveredDc,
       batteryTemp: dto.batteryTemp,
     });
+
+    await this.cacheManager.del(
+      `analytics:performance:${dto.vehicleId}`,
+    );
+
+    return { status: 'ok' };
   }
 }
 
 
-// @Injectable()
-// export class VehicleService {
-//   constructor(
-//     @InjectRepository(Vehicle)
-//     private vehicleRepo: Repository<Vehicle>,
-//   ) {}
 
-//   async create(data: CreateVehicleDto) {
-//     return this.vehicleRepo.save(data); // append-only for history
-//   }
 
-//   async upsertCurrentStatus(data: CreateVehicleDto) {
-//     return this.vehicleRepo.save(data); // UPSERT for live view
-//   }
-// }
+

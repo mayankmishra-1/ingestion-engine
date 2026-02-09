@@ -1,4 +1,3 @@
-// src/modules/vehicle/entities/vehicle.entity.ts
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
 
 @Entity()

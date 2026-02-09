@@ -1,4 +1,3 @@
-// src/modules/meter/meter.controller.ts
 import { Controller, Post, Body } from '@nestjs/common';
 import { MeterService } from './meter.service';
 import { CreateMeterDto } from './dto/create-meter.dto';

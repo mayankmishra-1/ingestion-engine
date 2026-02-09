@@ -1,4 +1,3 @@
-// src/modules/vehicle/entities/vehicle-live.entity.ts
 import { Entity, PrimaryColumn, Column, UpdateDateColumn } from 'typeorm';
 
 @Entity('vehicle_live')
