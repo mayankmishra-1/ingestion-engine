@@ -24,28 +24,29 @@ This project demonstrates **Redis caching**, **PostgreSQL partitioning**, **hot/
 
 * **REST API** for ingestion and analytics:
 
-   * `/api/v1/meter` – Insert meter readings  
-    Example:
+   * `/api/v1/ingest` – Insert meter or vehicle readings 
+    Meter Data Example:
     ```bash
-    curl --location 'http://localhost:3000/api/v1/meter' \
+    curl --location 'http://localhost:3000/api/v1/ingest' \
     --header 'Content-Type: application/json' \
     --data '{
-        "meterId": "M4561",
-        "kwhConsumedAc": 1109.0,
+        "type": "meter",
+        "meterId": "M123",
+        "kwhConsumedAc": 109.0,
         "voltage": 237
       }'
     ```
 
-  * `/api/v1/vehicle` – Insert vehicle readings  
-    Example:
+     Vehicle Data Example:
     ```bash
-    curl --location 'http://localhost:3000/api/v1/vehicle' \
+    curl --location 'http://localhost:3000/api/v1/ingest' \
     --header 'Content-Type: application/json' \
     --data '{
+        "type": "vehicle",
         "vehicleId": "V123",
         "soc": 65,
-        "kwhDeliveredDc": 150.51,
-        "batteryTemp": 300
+        "kwhDeliveredDc": 95.0,
+        "batteryTemp": 50
       }'
     ```
 

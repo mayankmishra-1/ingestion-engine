@@ -12,6 +12,7 @@ import { Meter } from './modules/meter/entities/meter.entity';
 import { MeterLive } from './modules/meter/entities/meter-live.entity';
 import { Vehicle } from './modules/vehicle/entities/vehicle.entity';
 import { VehicleLive } from './modules/vehicle/entities/vehicle-live.entity';
+import { IngestModule } from './modules/ingest/ingest.module';
 
 @Injectable()
 export class TestCacheService {
@@ -68,6 +69,7 @@ export class TestCacheService {
     MeterModule,
     VehicleModule,
     AnalyticsModule,
+    IngestModule,
   ],
   providers: [TestCacheService],
 })
