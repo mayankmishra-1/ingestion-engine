@@ -24,10 +24,36 @@ This project demonstrates **Redis caching**, **PostgreSQL partitioning**, **hot/
 
 * **REST API** for ingestion and analytics:
 
-  * `/api/v1/meter` – Insert meter readings
-  * `/api/v1/vehicle` – Insert vehicle readings
-  * `/api/v1/analytics/performance/:vehicleId` – Get analytics for a vehicle (24h window)
+   * `/api/v1/meter` – Insert meter readings  
+    Example:
+    ```bash
+    curl --location 'http://localhost:3000/api/v1/meter' \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "meterId": "M4561",
+        "kwhConsumedAc": 1109.0,
+        "voltage": 237
+      }'
+    ```
 
+  * `/api/v1/vehicle` – Insert vehicle readings  
+    Example:
+    ```bash
+    curl --location 'http://localhost:3000/api/v1/vehicle' \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "vehicleId": "V123",
+        "soc": 65,
+        "kwhDeliveredDc": 150.51,
+        "batteryTemp": 300
+      }'
+    ```
+
+  * `/api/v1/analytics/performance/:vehicleId` – Get analytics for a vehicle (24h window)  
+    Example:
+    ```bash
+    curl --location 'http://localhost:3000/api/v1/analytics/performance/V123'
+    ```
 * **Redis caching** for fast analytics queries
 
 * **Partitioned PostgreSQL tables** for hot (recent) and cold (historical) data
