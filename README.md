@@ -63,7 +63,7 @@ This project demonstrates **Redis caching**, **PostgreSQL partitioning**, **hot/
 
 * **Dockerized environment** with Postgres, Redis, and NestJS app
 
-Since the requirement does not explicitly define an association between meters and vehicles (i.e., which vehicle is connected to which meter), and the incoming meter telemetry does not include a vehicleId, no direct relationship was assumed or enforced at the schema level.
+Since the requirement does not explicitly define an association between meters and vehicles (i.e., which vehicle is connected to which meter), and the incoming meter telemetry does not include a vehicleId(in meter data or meterId in vehicle data), no direct relationship was assumed or enforced at the schema level.
 
 The system treats meter and vehicle streams as independent data sources, aligning strictly with the provided data contracts. Analytical efficiency is derived by comparing fleet-level AC consumption against per-vehicle DC delivery, as described in the problem statement, without introducing undocumented assumptions.
 
